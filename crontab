@@ -1,0 +1,1 @@
+* * * * * node /app/src/cron_runner.js >> /cron/cron.log 2>&1
