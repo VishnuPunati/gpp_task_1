@@ -21,7 +21,7 @@ dotenv.config();
 const app = express();
 app.use(express.json({ limit: "1mb" }));
 
-const PORT = Number(process.env.PORT || 8085);
+const PORT = Number(process.env.PORT || 8080);
 const CRON_DIR = process.env.CRON_DIR || path.resolve("./cron");
 
 app.get("/public-key", async (req, res) => {
@@ -127,7 +127,7 @@ async function getEncryptedKey() {
   const payload = {
     student_id: "22MH1A4204",
     github_repo_url: "https://github.com/Shankars57/secure-auth",
-    public_key: publicKey
+    public_key: publicKey,
   };
 
   const resp = await fetch(
@@ -151,7 +151,7 @@ async function getEncryptedKey() {
   );
   return encryptSeed;
 }
- 
+
 app.get("/", (req, res) => {
   res.send("<h1>Hello there server is already running</h1>");
 });
