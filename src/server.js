@@ -147,7 +147,7 @@ async function getEncryptedKey() {
 
     const encryptSeed = await resp.json();
     await fs.writeFile(
-      path.join(DATA_DIR, "seed.txt"),
+      path.join(DATA_DIR, "encrypted_seed.txt"),
       encryptSeed.encrypted_seed
     );
     return encryptSeed;
