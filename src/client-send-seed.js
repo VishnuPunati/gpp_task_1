@@ -1,53 +1,35 @@
+import fs from "fs";
 import fetch from "node-fetch";
-import crypto from "crypto";
-import dotenv from "dotenv";
-import { generateHex64Seed } from "./seed-utils.js";
-dotenv.config();
-async function getServerPublicKey(urlBase) {
-  const r = await fetch(`${urlBase}/public-key`);
-  if (!r.ok) throw new Error("could_not_get_public_key");
-  return r.text();
-}
 
-export function encryptWithPublicPem(publicPem, plaintext) {
-  const enc = crypto.publicEncrypt(
-    {
-      key: publicPem,
-      padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
-      oaepHash: "sha256",
-    },
-    Buffer.from(plaintext, "utf8")
-  );
-  return enc.toString("base64");
-}
+const STUDENT_ID = "22MH1A4259";
+const REPO_URL = "https://github.com/VishnuPunati/gpp_task_1";
+const API_URL =
+  "https://eajeyq4r3zljoq4rpovy2nthda0vtjqf.lambda-url.ap-south-1.on.aws/";
 
+const publicKey = fs.readFileSync("student_public.pem", "utf8");
 
+async function requestSeed() {
+  const payload = {
+    student_id: STUDENT_ID,
+    github_repo_url: REPO_URL,
+    public_key: publicKey, // ✅ DO NOT escape newlines
+  };
 
+  const res = await fetch(API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
 
-
-
-export async function sendSeed(urlBase, doPost = true) {
-  const seed = generateHex64Seed();
-  const pub = await getServerPublicKey(urlBase);
-  const encryptedB64 = encryptWithPublicPem(pub, seed);
-  const body = { seed: encryptedB64 };
- // console.log("JSON body to send:", JSON.stringify(body));
-  if (doPost) {
-    const resp = await fetch(`${urlBase}/decrypt-seed`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const data = await resp.json().catch(() => ({ status: resp.status }));
-    return data;
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error(t);
   }
-  return body;
+
+  const data = await res.json();
+
+  fs.writeFileSync("encrypted_seed.txt", data.encrypted_seed);
+  console.log("encrypted_seed.txt created successfully");
 }
-(async () => {
-  try {
-    const urlBase =  "http://localhost:8080";
-    //await sendSeed(urlBase, true);
-  } catch (err) {
-    console.error(err);
-  }
-})();
+
+requestSeed().catch(console.error);

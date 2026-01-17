@@ -1,13 +1,17 @@
-version: "3.8"
 services:
   secure-auth:
     build: .
     ports:
       - "8080:8080"
-    volumes:
-      - ./data:/data
-      - ./cron:/cron
     environment:
       - DATA_DIR=/data
       - CRON_DIR=/cron
       - TZ=UTC
+    volumes:
+      - seed-data:/data
+      - cron-output:/cron
+    restart: unless-stopped
+
+volumes:
+  seed-data:
+  cron-output:

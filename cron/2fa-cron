@@ -1,0 +1,1 @@
+* * * * * cd /app && node src/cron_runner.js >> /cron/last_code.txt 2>&1

@@ -1,94 +1,95 @@
 import fs from "fs/promises";
 import path from "path";
 import crypto from "crypto";
-import base32 from "hi-base32";
 
-export const DATA_DIR = path.resolve(process.env.DATA_DIR || "./data");
-export const PRIVATE_KEY_PATH = path.join(DATA_DIR, "student_private.pem");
-export const PUBLIC_KEY_PATH = path.join(DATA_DIR, "student_public.pem");
+export const DATA_DIR = path.resolve(process.env.DATA_DIR || "/data");
+
+export const PRIVATE_KEY_PATH = path.resolve("student_private.pem");
+export const PUBLIC_KEY_PATH = path.resolve("student_public.pem");
 export const SEED_PATH = path.join(DATA_DIR, "seed.txt");
 
+/* =========================
+   Keys must EXIST (no regen)
+   ========================= */
 export async function ensureKeys() {
-  try {
-    await fs.access(PRIVATE_KEY_PATH);
-    await fs.access(PUBLIC_KEY_PATH);
-    return;
-  } catch {
-    const { publicKey, privateKey } = crypto.generateKeyPairSync("rsa", {
-      modulusLength: 4096,
-      publicExponent: 0x10001,
-      publicKeyEncoding: { type: "spki", format: "pem" },
-      privateKeyEncoding: { type: "pkcs8", format: "pem" },
-    });
-
-    await fs.mkdir(DATA_DIR, { recursive: true });
-    await fs.writeFile(PRIVATE_KEY_PATH, privateKey, { mode: 0o600 });
-    await fs.writeFile(PUBLIC_KEY_PATH, publicKey, { mode: 0o644 });
-  }
+  await fs.access(PRIVATE_KEY_PATH);
+  await fs.access(PUBLIC_KEY_PATH);
 }
 
+/* =========================
+   Decrypt seed (RSA-OAEP)
+   Store HEX (64 chars)
+   ========================= */
 export async function decryptSeedAndStore(base64Encrypted) {
-  const priv = await fs.readFile(PRIVATE_KEY_PATH, "utf8");
-  const encBuf = Buffer.from(base64Encrypted, "base64");
+  const privateKeyPem = await fs.readFile(PRIVATE_KEY_PATH, "utf8");
+  const encryptedBuffer = Buffer.from(base64Encrypted, "base64");
+
   let decrypted;
   try {
     decrypted = crypto.privateDecrypt(
       {
-        key: priv,
-        oaepHash: "sha256",
+        key: privateKeyPem,
         padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+        oaepHash: "sha256",
       },
-      encBuf
+      encryptedBuffer,
     );
   } catch (err) {
-    throw new Error("decryption_failed: " + err.message);
+    throw new Error("Decryption failed");
   }
 
-  let plain = decrypted.toString("utf8").trim();
+  const hexSeed = decrypted.toString("utf8").trim();
 
-  if (/^[0-9a-fA-F]{64}$/.test(plain)) {
-    const buf = Buffer.from(plain, "hex");
-    let b32 = base32.encode(buf).replace(/=+$/g, "");
-    b32 = b32.toUpperCase();
-    plain = b32;
+  // STRICT validation
+  if (!/^[0-9a-f]{64}$/.test(hexSeed)) {
+    throw new Error("Invalid seed format");
   }
 
-  await fs.writeFile(SEED_PATH, plain, { mode: 0o600 });
-  return plain;
+  await fs.mkdir(DATA_DIR, { recursive: true });
+  await fs.writeFile(SEED_PATH, hexSeed, { mode: 0o600 });
+
+  return hexSeed;
 }
 
-export async function signCommitHash(hashHex) {
-  if (!/^[0-9a-fA-F]+$/.test(hashHex)) {
-    throw new Error("invalid_commit_hash");
+/* =========================
+   Sign commit hash (RSA-PSS)
+   ASCII bytes ONLY
+   ========================= */
+export async function signCommitHash(commitHash) {
+  if (!/^[0-9a-f]{40}$/.test(commitHash)) {
+    throw new Error("Invalid commit hash");
   }
 
-  const priv = await fs.readFile(PRIVATE_KEY_PATH, "utf8");
-  const buf = Buffer.from(hashHex, "hex");
+  const privateKeyPem = await fs.readFile(PRIVATE_KEY_PATH, "utf8");
 
-  const signature = crypto.sign("sha256", buf, {
-    key: priv,
+  // CRITICAL: ASCII, NOT hex
+  const messageBuffer = Buffer.from(commitHash, "utf8");
+
+  return crypto.sign("sha256", messageBuffer, {
+    key: privateKeyPem,
     padding: crypto.constants.RSA_PKCS1_PSS_PADDING,
     saltLength: crypto.constants.RSA_PSS_SALTLEN_MAX,
   });
-
-  return signature;
 }
 
-export function encryptWithPubPem(pubPem, bufferToEncrypt) {
-  try {
-    return crypto.publicEncrypt(
-      {
-        key: pubPem,
-        padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
-        oaepHash: "sha256",
-      },
-      bufferToEncrypt
-    );
-  } catch (err) {
-    throw new Error("public_encrypt_failed: " + err.message);
-  }
+/* =========================
+   Encrypt with public key
+   (RSA-OAEP SHA-256)
+   ========================= */
+export function encryptWithPubPem(publicKeyPem, buffer) {
+  return crypto.publicEncrypt(
+    {
+      key: publicKeyPem,
+      padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+      oaepHash: "sha256",
+    },
+    buffer,
+  );
 }
 
+/* =========================
+   Read public key
+   ========================= */
 export async function readPublicKey() {
   return fs.readFile(PUBLIC_KEY_PATH, "utf8");
 }
